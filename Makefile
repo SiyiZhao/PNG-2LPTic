@@ -27,23 +27,23 @@ OPT   +=  -DNO64BITID     # switch this on if you want normal 32-bit IDs
 
 #OPT += -DONLY_GAUSSIAN # shwich this if you want gaussian initial conditions (fnl otherwise) 
 
-#OPT += -DLOCAL_FNL #switch this if you want only local non-gaussianities
+OPT += -DLOCAL_FNL #switch this if you want only local non-gaussianities
 
 #OPT += -DEQUIL_FNL #switch this if you want equilateral Fnl
 
-OPT += -DORTOG_FNL #switch this if you want ortogonal Fnl
+# OPT += -DORTOG_FNL #switch this if you want ortogonal Fnl
 
 OPTIONS =  $(OPT)
 
 # ----- Chichipio/astro values ---- 
 #
-GSL_INCL= -I/usr/local/gsl_gcc_mpi/include
-GSL_LIBS= -L/usr/local/gsl_gcc_mpi/lib
-FFTW_INCL= -I/usr/local/fftw_gcc/include
-FFTW_LIBS= -L/usr/local/fftw_gcc/lib
+GSL_INCL= -I/opt/ohpc/pub/libs/gnu9/gsl/2.7/include
+GSL_LIBS= -L/opt/ohpc/pub/libs/gnu9/gsl/2.7/lib
+FFTW_INCL= -I/home/siyizhao/lib/fftw-2.1.5/include
+FFTW_LIBS= -L/home/siyizhao/lib/fftw-2.1.5/lib
 
-CC       =  /usr/local/mpich_gcc/bin/mpicc #-g -Wall -fbounds-check    # sets the C-compiler (default)
-MPICHLIB = -L/usr/local/mpich_gcc/lib
+CC       =  mpicc #-g -Wall -fbounds-check    # sets the C-compiler (default)
+# MPICHLIB = -L/usr/local/mpich_gcc/lib
 
 #CC       =  /usr/local/mpich_intel/bin/mpicc -g -Wall -fbounds-check    # sets the C-compiler (default)
 

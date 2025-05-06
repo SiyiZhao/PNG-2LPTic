@@ -25,14 +25,26 @@ OPT   +=  -DNO64BITID     # switch this on if you want normal 32-bit IDs
 
 #OPT += -DONLY_ZA    # swith this on if you want ZA initial conditions (2LPT otherwise)
 
-#OPT += -DONLY_GAUSSIAN # shwich this if you want gaussian initial conditions (fnl otherwise) 
+#MODE = -DONLY_GAUSSIAN
+MODE = -DLOCAL_FNL
+# MODE = -DEQUIL_FNL
 
-OPT += -DLOCAL_FNL #switch this if you want only local non-gaussianities
+# MODE = -DORTOG_FNL
+# MODE = -DORTOG_LSS_FNL
 
-#OPT += -DEQUIL_FNL #switch this if you want equilateral Fnl
 
-# OPT += -DORTOG_FNL #switch this if you want ortogonal Fnl
-
+ifeq ($(MODE),-DONLY_GAUSSIAN)
+	EXEC:=2LPT
+else ifeq ($(MODE),-DLOCAL_FNL)
+	EXEC:=2LPTNGLC
+else ifeq ($(MODE),-DEQUIL_FNL)
+	EXEC:=2LPTNGEQ
+else ifeq ($(MODE),-DORTOG_FNL)
+	EXEC:=2LPTNGOR
+else ifeq ($(MODE),-DORTOG_LSS_FNL)
+	EXEC:=2LPTNGORLSS
+endif
+OPT += $(MODE)
 OPTIONS =  $(OPT)
 
 # ----- Chichipio/astro values ---- 

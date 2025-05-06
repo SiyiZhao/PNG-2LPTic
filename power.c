@@ -134,7 +134,7 @@ void read_transfer_table(void)
       printf("\n WARNING: klower is %f, may be too large to normalize transfer  \n",klower);
       FatalError(1111);  
      }
-  if(TransferTable[NTransferTable].logk <= log10(500./8.) ) 
+  if(TransferTable[NTransferTable - 1].logk <= log10(500./8.) ) 
      {
       printf("\n WARNING: kmax is may be too small to normalize transfer  \n");
       printf("\n Values outside the input range will be taken to be zero  \n");
@@ -168,11 +168,6 @@ void initialize_transferfunction(void)
   /* Transfer function is meant to be normalizet to 1 at k=0 
    * No multiple Tf implemented as in power spectrum multiple species 
    */ 
-
-   FnlTime = 1 / (1 + RedshiftFnl);  /* scale factor where to compute nonlinear potential*/
-
-   DstartFnl = GrowthFactor(FnlTime, 1.0);
-
    if(WhichTransfer == 2)
     read_transfer_table();
  
@@ -181,10 +176,8 @@ void initialize_transferfunction(void)
 
 double TransferFunc_Tabulated(double k)
 {
-  double logk, logT, T, kold, u, dlogk; 
+  double logk, logT, T, u, dlogk; 
   int binlow, binhigh, binmid;
-
-  kold = k;
 
   k *= (InputSpectrum_UnitLength_in_cm / UnitLength_in_cm);     /* convert to h/Mpc */
 
@@ -433,6 +426,7 @@ void initialize_powerspectrum(void)
   if(ThisTask == 0 && WhichSpectrum == 2)
     printf("Normalization adjusted to  Sigma8=%g   (Normfac=%g)\n\n", Sigma8, Norm);
 
+  D0 = GrowthFactor(1.e-8, 1.0) * 1.e-8; /* Linnear growth factor at redshift z=0.0 normalized to D = a during matter domination */
   Dplus = GrowthFactor(InitTime, 1.0);
 
 

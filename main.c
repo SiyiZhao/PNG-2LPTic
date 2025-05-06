@@ -1,21 +1,13 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <rfftw_mpi.h>
 #include <mpi.h>
 #include <gsl/gsl_rng.h>
-
 #include "allvars.h"
 #include "proto.h"
 
-
 #define ASSERT_ALLOC(cond) {                                                                                  \
-   if(cond)                                                                                                   \
-    {                                                                                                         \
-      if(ThisTask == 0)                                                                                       \
-	printf("\nallocated %g Mbyte on Task %d\n", bytes / (1024.0 * 1024.0), ThisTask);                     \
-    }                                                                                                         \
-  else                                                                                                        \
+  if(!cond)                                                                                                   \
     {                                                                                                         \
       printf("failed to allocate %g Mbyte on Task %d\n", bytes / (1024.0 * 1024.0), ThisTask);                \
       printf("bailing out.\n");                                                                               \
@@ -23,103 +15,141 @@
     }                                                                                                         \
 }
 
+int frequency_of_primes (int n) {
+  int i,j;
+  int freq=n-1;
+  for (i=2; i<=n; ++i) for (j=sqrt(i);j>1;--j) if (i%j==0) {--freq; break;}
+  return freq;
+}
 
+void print_timed_done(int n) {
+  clock_t tot_time = clock() - start_time;
+  int tot_hours = (int) floor(((double) tot_time) / 60. / 60. / CLOCKS_PER_SEC);
+  int tot_mins = (int) floor(((double) tot_time) / 60. / CLOCKS_PER_SEC) - 60 * tot_hours;
+  double tot_secs = (((double) tot_time) / CLOCKS_PER_SEC) - 60. * (((double) tot_mins) * 60. * ((double) tot_hours));
+  clock_t diff_time = clock() - previous_time;
+  int diff_hours = (int) floor(((double) diff_time) / 60. / 60. / CLOCKS_PER_SEC);
+  int diff_mins = (int) floor(((double) diff_time) / 60. / CLOCKS_PER_SEC) - 60 *diff_hours;
+  double diff_secs = (((double) diff_time) / CLOCKS_PER_SEC) - 60. * (((double) diff_mins) * 60. * ((double) diff_hours));
+  for (int i = 0; i < n; i++)
+   printf(" ");
+  printf("Done [%02d:%02d:%05.2f, %02d:%02d:%05.2f]\n", diff_hours, diff_mins, diff_secs, tot_hours, tot_mins, tot_secs);
+  previous_time = clock();
+  return;
+}
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
+
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &ThisTask);
   MPI_Comm_size(MPI_COMM_WORLD, &NTask);
 
-  if(argc < 2)
-    {
-      if(ThisTask == 0)
-	{
+  start_time = clock();
+  previous_time = start_time;
+
+  if(argc < 2) {
+    if(ThisTask == 0) {
 	  fprintf(stdout, "\nParameters are missing.\n");
 	  fprintf(stdout, "Call with <ParameterFile>\n\n");
 	}
-      MPI_Finalize();
-      exit(0);
-    }
+    MPI_Finalize();
+    exit(0);
+  }
 
   read_parameterfile(argv[1]);
-
   checkchoose();  
-
   set_units();
-
   initialize_transferfunction(); 
-
   initialize_powerspectrum(); 
-
   initialize_ffts(); 
-
   read_glass(GlassFile);
+
+  if (ThisTask == 0)
+    print_setup();
 
   displacement_fields();
 
+  if (ThisTask == 0) {printf("Writing initial conditions snapshot..."); fflush(stdout);};
   write_particle_data();
-
+  if (ThisTask == 0 ) print_timed_done(10);
   if(NumPart)
     free(P);
-
   free_ffts();
-
-
-  if(ThisTask == 0)
-    {
-      printf("\nIC's generated.\n\n");
-      printf("Initial scale factor = %g\n", InitTime);
-      printf("\n");
-    }
-
   MPI_Barrier(MPI_COMM_WORLD);
   print_spec();
-
   MPI_Finalize();		/* clean up & finalize MPI */
   exit(0);
 }
 
+void print_setup(void) {
+  char pstr[79];
+
+  for (int i = 0; i < 79; i++)
+    pstr[i] = '*';
+  printf("%s\n", pstr);
+
+#ifdef ONLY_GAUSSIAN
+  char exec[] = "  2LPT  ";
+#endif
+#ifdef LOCAL_FNL  
+  char exec[] = "2LPTNGLC";
+#endif
+#ifdef EQUIL_FNL 
+  char exec[] = "2LPTNGEQ";
+#endif
+#ifdef ORTOG_FNL 
+  char exec[] = "2LPTNGOR";
+#endif
+//wrc
+#ifdef ORTOG_LSS_FNL 
+  char exec[] = "2LPTNGORLSS";
+#endif
 
 
+  pstr[0] = '*';
+  for (int i = 1; i < 79/2 - 3; i++)
+    pstr[i] = ' ';
+  sprintf(&pstr[79/2 - 4], "%s", exec);
+  for (int i = 79/2 + 4; i < 78; i++)
+    pstr[i] = ' ';
+  pstr[78] = '*';
+  printf("%s\n", pstr);
+  for (int i = 0; i < 79; i++)
+    pstr[i] = '*';
+  printf("%s\n", pstr);
 
+  printf("\n");
 
-void displacement_fields(void)
-{
+  printf("      Box = %.2e   Nmesh = %d   Nsample = %d\n", Box, Nmesh, Nsample);
+  printf("                       Nglass = %d    GlassTileFac = %d\n\n", Nglass, GlassTileFac);
+  printf("        Omega = %.4f         OmegaLambda = %.4f    OmegaBaryon = %.2e\n", Omega,  OmegaLambda, OmegaBaryon);
+  printf("       sigma8 = %.4f     PrimoridalIndex = %.4f       Redshift = %.2e\n", Sigma8, PrimordialIndex, Redshift);
+  printf("  HubbleParam = %.4f  OmegaDM_2ndSpecies = %.2e          fNL = %+.2e\n\n", HubbleParam, OmegaDM_2ndSpecies, Fnl); 
+  printf("   FixedAmplitude = %d    PhaseFlip = % d   SphereMode = %d    Seed = %d\n", FixedAmplitude, PhaseFlip, SphereMode, Seed);   
+
+  for (int i = 0; i < 79; i++)
+    pstr[i] = '*';
+  printf("\n%s\n\n", pstr);
+  return;
+}
+
+void displacement_fields(void) {
   MPI_Request request;
   MPI_Status status;
   gsl_rng *random_generator;
   int i, j, k, ii, jj, kk, axes;
   int n;
   int sendTask, recvTask;
-  double fac, vel_prefac, vel_prefac2;
-  double phig, Beta;
-  double kvec[3], kmag, kmag2, p_of_k, t_of_k;
-  double delta, phase, ampl, hubble_a;
-  double u, v, w;
-  double f1, f2, f3, f4, f5, f6, f7, f8;
-  double dis, dis2, maxdisp, max_disp_glob;
-  unsigned int *seedtable;
+#ifdef ONLY_GAUSSIAN
+  double p_of_k, delta;
+#else
+  double t_of_k, phig, Beta, twb;
+  fftw_complex *(cpot);  /* For computing nongaussian fnl ic */
+  fftw_real *(pot);
+#ifndef LOCAL_FNL  
 // *************************** DSJ *******************************
   double exp_1_over_3, exp_1_over_6, kmag_1_over_3, kmag_2_over_3;
 // *************************** DSJ *******************************
-// ******* FAVN *****
-  double phase_shift; 
-// ******* FAVN *****
-
-  double phase2; 
-  double twb;
-  unsigned int bytes, nmesh3;
-  int coord;
-  fftw_complex *(cdisp[3]), *(cdisp2[3]) ; /* ZA and 2nd order displacements */
-  fftw_real *(disp[3]), *(disp2[3]) ;
-
-  fftw_complex *(cdigrad[6]);
-  fftw_real *(digrad[6]);
-
-  fftw_complex *(cpot);  /* For computing nongaussian fnl ic */
-  fftw_real *(pot);
-
   fftw_complex *(cpartpot); /* For non-local fluctuations */
   fftw_real *(partpot);
   fftw_complex *(cp1p2p3sym);
@@ -130,46 +160,61 @@ void displacement_fields(void)
   fftw_real *(p1p2p3nab);
   fftw_complex *(cp1p2p3tre);
   fftw_real *(p1p2p3tre);
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+  // Will contain phi_G/k (hence invs)
+  fftw_complex *(cp1p2p3inv);
+  fftw_real *(p1p2p3inv);
+  // names correspond to kernels in Appendix A of Coulton et al.
+  fftw_complex *(cp1p2p3_K12D);
+  fftw_real *(p1p2p3_K12D);
+  fftw_complex *(cp1p2p3_K12E);
+  fftw_real *(p1p2p3_K12E);
+  fftw_complex *(cp1p2p3_K12F);
+  fftw_real *(p1p2p3_K12F);
+  fftw_complex *(cp1p2p3_K12G);
+  fftw_real *(p1p2p3_K12G);
+  double orth_p = 27.0/(-21.0+743.0/(7*(20.0*pow(PI,2.0)-193.0)));
+  double orth_t = (2.0+20.0/9.0*orth_p)/(6*(1.0+5.0/9.0*orth_p));
+#endif
+// ****  wrc ****
+#endif
+#endif
 
 
-  /**** only to print phi(x) when testing ***/
-  int4byte dummy;
-  FILE *fd;
-  char buf[300];
+  double fac, vel_prefac, vel_prefac2;
+  double kvec[3], kmag, kmag2;
+  double phase, ampl, hubble_a;
+  double u, v, w;
+  double f1, f2, f3, f4, f5, f6, f7, f8;
+  double dis, dis2, maxdisp, max_disp_glob;
+  unsigned int *seedtable;
+// ******* FAVN *****
+  double phase_shift; 
+// ******* FAVN *****
+
+  unsigned int bytes, nmesh3;
+  int coord;
+  fftw_complex *(cdisp[3]), *(cdisp2[3]) ; /* ZA and 2nd order displacements */
+  fftw_real *(disp[3]), *(disp2[3]) ;
+
+  fftw_complex *(cdigrad[6]);
+  fftw_real *(digrad[6]);
+
 
 
 #ifdef CORRECT_CIC
   double fx, fy, fz, ff, smth;
 #endif
 
-
-
-  if(ThisTask == 0)
-    {
-      printf("\nstart computing displacement fields...\n");
-      fflush(stdout);
-    }
-
-  hubble_a =
-    Hubble * sqrt(Omega / pow(InitTime, 3) + (1 - Omega - OmegaLambda) / pow(InitTime, 2) + OmegaLambda);
-
-  vel_prefac = InitTime * hubble_a * F_Omega(InitTime);
-  vel_prefac2 = InitTime * hubble_a * F2_Omega(InitTime);
-
-  vel_prefac /= sqrt(InitTime);	/* converts to Gadget velocity */
-  vel_prefac2 /= sqrt(InitTime);
-
+  hubble_a = Hubble * sqrt(Omega / pow(InitTime, 3) + (1 - Omega - OmegaLambda) / pow(InitTime, 2) + OmegaLambda);
+  vel_prefac = InitTime * hubble_a * F_Omega(InitTime) / sqrt(InitTime);
+  vel_prefac2 = InitTime * hubble_a * F2_Omega(InitTime) / sqrt(InitTime);
 
 // ******************************************** FAVN **********************************************
   phase_shift = 0.0;
   if (PhaseFlip==1)
   	phase_shift = PI;
-
-  if(ThisTask == 0){
-    printf("vel_prefac= %g, vel_prefac2= %g,  hubble_a=%g fom=%g \n", vel_prefac, vel_prefac2, 
-                                                                      hubble_a, F_Omega(InitTime));
-    printf("Phase shift = %.7f\n\n",phase_shift);
-  }
 // ******************************************** FAVN **********************************************
 
   fac = pow(2 * PI / Box, 1.5);
@@ -213,6 +258,8 @@ void displacement_fields(void)
 
 #ifdef ONLY_GAUSSIAN
 
+  if (ThisTask == 0) {printf("Setting up gradient of Gaussian potential..."); fflush(stdout);};
+
   for(axes=0,bytes=0; axes < 3; axes++)
     {
       cdisp[axes] = (fftw_complex *) malloc(bytes += sizeof(fftw_real) * TotalSizePlusAdditional);
@@ -226,11 +273,6 @@ void displacement_fields(void)
   for(Type = MinType; Type <= MaxType; Type++)
 #endif
     {
-      if(ThisTask == 0)
-	{
-	  printf("\nstarting axes=%d...\n", axes);
-	  fflush(stdout);
-	}
 
       /* first, clean the array */
       for(i = 0; i < Local_nx; i++)
@@ -241,10 +283,6 @@ void displacement_fields(void)
 		cdisp[axes][(i * Nmesh + j) * (Nmesh / 2 + 1) + k].re = 0;
 		cdisp[axes][(i * Nmesh + j) * (Nmesh / 2 + 1) + k].im = 0;
 	      }
-
-  if(ThisTask == 0 ) printf("\n hera C\n");
-  fflush(stdout);
-
 
       for(i = 0; i < Nmesh; i++)
 	{
@@ -390,16 +428,11 @@ void displacement_fields(void)
 	    }
 	}
 
+  if (ThisTask == 0 ) print_timed_done(4);
       
-
 #else    /* non gaussian initial potential fnl type  */
 
-      if(ThisTask == 0)
-        {
-          printf("\nstarting nongaussian\n");
-          fflush(stdout);
-        }
-
+      if (ThisTask == 0) {printf("Setting Gaussian potential..."); fflush(stdout);};
 
       bytes=0; /*initialize*/
       cpot = (fftw_complex *) malloc(bytes += sizeof(fftw_real) * TotalSizePlusAdditional);
@@ -417,13 +450,9 @@ void displacement_fields(void)
                 cpot[(i * Nmesh + j) * (Nmesh / 2 + 1) + k].im = 0;
               }
 
-
-                                                                /* Ho in units of h/Mpc and c=1, i.e., internal units so far  */
-      Beta = 1.5 * Omega / FnlTime / (2998. * 2998. );          /* Beta = 3/2 H(z)^2 a^2 Om(a) = 3/2 Ho^2 Om0 / a */ 
-// ******************* DSJ ***********************
-	  exp_1_over_3 = (4. - PrimordialIndex) / 3.; // n_s modified exponent for generalized laplacian/inverse laplacian, exponent for k^2
-	  exp_1_over_6 = (4. - PrimordialIndex) / 6.; // n_s modified exponent for generalized conjugate gradient magnitude and its inverse, exponent for k^2 
-// ******************* DSJ ***********************
+      /* Ho in units of UnitLength_in_cm and c=1, i.e., internal units so far  */
+      /* Beta = 3/2 H(z)^2 a^3 Om(a) / D0 = 3/2 Ho^2 Om0 / D0 at redshift z = 0.0 */ 
+      Beta = 1.5 * Omega / (2998. * 2998. / UnitLength_in_cm / UnitLength_in_cm * 3.085678e24 * 3.085678e24 ) / D0 ;        
 
       for(i = 0; i < Nmesh; i++)
         {
@@ -439,9 +468,13 @@ void displacement_fields(void)
 
                   for(k = 0; k < Nmesh / 2; k++)
                     {
-                      phase = gsl_rng_uniform(random_generator) * 2* PI;
+                      phase = gsl_rng_uniform(random_generator) * 2 * PI;
+// ***************** FAVN *****************
+                      phase += phase_shift;
+// ***************** FAVN *****************
                       do
                         ampl = gsl_rng_uniform(random_generator);
+
                       while(ampl == 0);
 
                       if(i == Nmesh / 2 || j == Nmesh / 2 || k == Nmesh / 2)
@@ -482,9 +515,13 @@ void displacement_fields(void)
                             continue;
                         }
 
-                      phig = -log(ampl) * Anorm * exp( PrimordialIndex * log(kmag) );   /* initial normalized power */
+                      phig = Anorm * exp( PrimordialIndex * log(kmag) );   /* initial normalized power */
+// ************** FAVN/DSJ ***************
+					  if (!FixedAmplitude)
+					  	phig *= -log(ampl);
+// ***************** FAVN/DSJ *************
                       
-                      phig = sqrt(phig) * fac * Beta / DstartFnl / kmag2;    /* amplitude of the initial gaussian potential */
+                      phig = sqrt(phig) * fac * Beta / kmag2;    /* amplitude of the initial gaussian potential */
                
                       if(k > 0)
                         {
@@ -493,8 +530,8 @@ void displacement_fields(void)
 
                                 coord = ((i - Local_x_start) * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-                                cpot[coord].re = phig * sin(phase);
-                                cpot[coord].im = - phig * cos(phase);
+                                cpot[coord].re = phig * cos(phase);
+                                cpot[coord].im = phig * sin(phase);
 
                                }
                         }
@@ -512,13 +549,13 @@ void displacement_fields(void)
 
                                           coord = ((i - Local_x_start) * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-                                          cpot[coord].re =  phig * sin(phase);
-                                          cpot[coord].im = - phig * cos(phase);
+                                          cpot[coord].re = phig * cos(phase);
+                                          cpot[coord].im = phig * sin(phase);
 
 
                                           coord = ((i - Local_x_start) * Nmesh + jj) * (Nmesh / 2 + 1) + k; 
-                                          cpot[coord].re = phig * sin(phase);
-                                          cpot[coord].im = phig * cos(phase);
+                                          cpot[coord].re =  phig * cos(phase);
+                                          cpot[coord].im = -phig * sin(phase);
 
                                     }
                                 }
@@ -541,16 +578,16 @@ void displacement_fields(void)
 
                                         coord = ((i - Local_x_start) * Nmesh + j) * (Nmesh / 2 + 1) + k;
           
-                                        cpot[coord].re = phig * sin(phase);
-                                        cpot[coord].im = - phig * cos(phase);
+                                        cpot[coord].re = phig * cos(phase);
+                                        cpot[coord].im = phig * sin(phase);
 
                                       }
                                   if(ii >= Local_x_start && ii < (Local_x_start + Local_nx))
                                       {
                                         coord = ((ii - Local_x_start) * Nmesh + jj) * (Nmesh / 2 + 1) + k;
 
-                                        cpot[coord].re = phig * sin(phase);
-                                        cpot[coord].im = phig * cos(phase);
+                                        cpot[coord].re = phig * cos(phase);
+                                        cpot[coord].im = -phig * sin(phase);
 
                                       }
                                 }
@@ -561,17 +598,16 @@ void displacement_fields(void)
             }
         }
 
-
+     if (ThisTask == 0 ) print_timed_done(19);
      /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
      /*** Notice also that there is a minus to convert from Bardeen to gravitational potential ***/
 
 #ifdef LOCAL_FNL  
 
-      /******* LOCAL PRIMORDIAL POTENTIAL ************/
+      if (ThisTask == 0) {printf("Computing local non-Gaussian potential..."); fflush(stdout);};
 
-      if(ThisTask == 0) printf("Fourier transforming initial potential to configuration...");
+      /******* LOCAL PRIMORDIAL POTENTIAL ************/
       rfftwnd_mpi(Inverse_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
       fflush(stdout);
 
       /* square the potential in configuration space */
@@ -587,12 +623,8 @@ void displacement_fields(void)
             }
 
       MPI_Barrier(MPI_COMM_WORLD);
-
-      if(ThisTask == 0) printf("Fourier transforming squared potential ...");
       rfftwnd_mpi(Forward_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
-   
+
        /* remove the N^3 I got by forwardfurier and put zero to zero mode */
 
       nmesh3 = ((unsigned int) Nmesh) * ((unsigned int) Nmesh ) * ((unsigned int) Nmesh);    
@@ -601,17 +633,65 @@ void displacement_fields(void)
           for(k = 0; k <= Nmesh / 2 ; k++)
             {
               coord = (i * Nmesh + j) * (Nmesh / 2 + 1) + k;
+
+// ****************************** DSJ *************************
+		      if(SphereMode == 1)
+			{
+              ii = i + Local_x_start;
+
+			  if(ii < Nmesh / 2)
+				kvec[0] = ii * 2 * PI / Box;
+			  else
+				kvec[0] = -(Nmesh - ii) * 2 * PI / Box;
+
+			  if(j < Nmesh / 2)
+				kvec[1] = j * 2 * PI / Box;
+			  else
+				kvec[1] = -(Nmesh - j) * 2 * PI / Box;
+
+			  if(k < Nmesh / 2)
+				kvec[2] = k * 2 * PI / Box;
+			  else
+				kvec[2] = -(Nmesh - k) * 2 * PI / Box;
+
+			  kmag = sqrt(kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2]);
+
+			  if(kmag * Box / (2 * PI) > Nsample / 2) {	/* select a sphere in k-space */
+				cpot[coord].re = 0.;
+				cpot[coord].im = 0.;
+				continue;
+			  }
+			}
+// ****************************** DSJ *************************
+
               cpot[coord].re /= (double) nmesh3; 
               cpot[coord].im /= (double) nmesh3; 
+
             }
         
        if(ThisTask == 0) {
-              cpot[0].re=0.;
-              cpot[0].im=0.; 
+              cpot[0].re = 0.;
+              cpot[0].im = 0.; 
            }
 
 
+      if (ThisTask == 0 ) print_timed_done(7);
+
 #else
+
+#ifdef EQUIL_FNL
+      if (ThisTask == 0) {printf("Computing equilateral non-Gaussian potential..."); fflush(stdout);};
+#endif
+#ifdef ORTOG_FNL
+      if (ThisTask == 0) {printf("Computing orthogonal non-Gaussian potential... "); fflush(stdout);};
+#endif
+
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+      if (ThisTask == 0) {printf("Computing orthogonal-LSS non-Gaussian potential... "); fflush(stdout);};
+#endif
+
+// ****  wrc ****
       /**** NON-LOCAL PRIMORDIAL POTENTIAL **************/ 
 
           /* allocate partpotential */
@@ -637,6 +717,30 @@ void displacement_fields(void)
 	  ASSERT_ALLOC(cp1p2p3tre);
 
 
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+    cp1p2p3inv = (fftw_complex *) malloc(bytes = sizeof(fftw_real) * TotalSizePlusAdditional);
+    p1p2p3inv  = (fftw_real *) cp1p2p3inv ;
+    ASSERT_ALLOC(cp1p2p3inv);
+    cp1p2p3_K12D = (fftw_complex *) malloc(bytes = sizeof(fftw_real) * TotalSizePlusAdditional);
+    p1p2p3_K12D  = (fftw_real *) cp1p2p3_K12D ;
+    ASSERT_ALLOC(cp1p2p3_K12D);
+    cp1p2p3_K12E = (fftw_complex *) malloc(bytes = sizeof(fftw_real) * TotalSizePlusAdditional);
+    p1p2p3_K12E  = (fftw_real *) cp1p2p3_K12E ;
+    ASSERT_ALLOC(cp1p2p3_K12E);
+    cp1p2p3_K12F = (fftw_complex *) malloc(bytes = sizeof(fftw_real) * TotalSizePlusAdditional);
+    p1p2p3_K12F  = (fftw_real *) cp1p2p3_K12F ;
+    ASSERT_ALLOC(cp1p2p3_K12F);
+    cp1p2p3_K12G = (fftw_complex *) malloc(bytes = sizeof(fftw_real) * TotalSizePlusAdditional);
+    p1p2p3_K12G  = (fftw_real *) cp1p2p3_K12G ;
+    ASSERT_ALLOC(cp1p2p3_K12G);
+#endif
+// ****  wrc ****
+// ******************* DSJ ***********************
+	  exp_1_over_3 = (4. - PrimordialIndex) / 3.; // n_s modified exponent for generalized laplacian/inverse laplacian, exponent for k^2
+	  exp_1_over_6 = (4. - PrimordialIndex) / 6.; // n_s modified exponent for generalized conjugate gradient magnitude and its inverse, exponent for k^2 
+// ******************* DSJ ***********************
+
       /* first, clean the array */
       for(i = 0; i < Local_nx; i++)
 	for(j = 0; j < Nmesh; j++)
@@ -651,6 +755,13 @@ void displacement_fields(void)
                 cp1p2p3nab[coord].im = 0;
                 cp1p2p3tre[coord].re = 0;
                 cp1p2p3tre[coord].im = 0;
+
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+                cp1p2p3inv[coord].re = 0;
+                cp1p2p3inv[coord].im = 0;
+#endif
+// ****  wrc ****
 		cpartpot[coord].re = 0;
 		cpartpot[coord].im = 0;
 	      }
@@ -685,42 +796,42 @@ void displacement_fields(void)
                         kvec[2] = -(Nmesh - k) * 2 * PI / Box;
 
                       kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
-// ****************************** DSJ *************************
+// ************************************ DSJ ********************************
 					  kmag_2_over_3 = pow(kmag2, exp_1_over_3);                      
 					  kmag_1_over_3 = pow(kmag2, exp_1_over_6);                      
-// ****************************** DSJ *************************
 
-                      cpartpot[coord].re = kmag * cpot[coord].re;
-                      cpartpot[coord].im = kmag * cpot[coord].im;
+                      cpartpot[coord].re = kmag_1_over_3 * cpot[coord].re;
+                      cpartpot[coord].im = kmag_1_over_3 * cpot[coord].im;
                       
-                      cp1p2p3nab[coord].re = kmag2 * cpot[coord].re;
-                      cp1p2p3nab[coord].im = kmag2 * cpot[coord].im; 
+                      cp1p2p3nab[coord].re = kmag_2_over_3 * cpot[coord].re;
+                      cp1p2p3nab[coord].im = kmag_2_over_3 * cpot[coord].im; 
+
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+                      if(i == 0 && j == 0 && k == 0)
+                      {
+                          continue;
+                      }
+                      cp1p2p3inv[coord].re =  cpot[coord].re/kmag_1_over_3;
+                      cp1p2p3inv[coord].im =  cpot[coord].im/kmag_1_over_3; 
+#endif
+// ****  wrc ****                  
+// ************************************ DSJ ********************************
             }
 
        MPI_Barrier(MPI_COMM_WORLD);
 
-       /*furier back to real */
-
-      if(ThisTask == 0) printf("Fourier transforming initial potential to configuration...");
+       /* Fourier back to real */
       rfftwnd_mpi(Inverse_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
-          
-
-      if(ThisTask == 0) printf("Fourier transforming partpotential to configuration...");
       rfftwnd_mpi(Inverse_plan, 1, partpot, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
-
-
-      if(ThisTask == 0) printf("Fourier transforming nabpotential to configuration...");
       rfftwnd_mpi(Inverse_plan, 1, p1p2p3nab, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
 
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+      rfftwnd_mpi(Inverse_plan, 1, p1p2p3inv, Workspace, FFTW_NORMAL_ORDER);
+#endif
+// ****  wrc ****
       MPI_Barrier(MPI_COMM_WORLD);
-
-
 
       /* multiplying terms in real space  */
 
@@ -730,58 +841,46 @@ void displacement_fields(void)
           for(k = 0; k < Nmesh; k++)
             {
              coord = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k; 
-   
+
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+              p1p2p3_K12D[coord] = p1p2p3inv[coord]*p1p2p3inv[coord]; // 1/k phi 1/k phi
+              p1p2p3_K12E[coord] = p1p2p3nab[coord]*p1p2p3inv[coord];   //k^2 phi 1/k phi
+              p1p2p3_K12F[coord] = pot[coord]*p1p2p3inv[coord];   //phi 1/k phi
+              p1p2p3_K12G[coord] = partpot[coord]*p1p2p3inv[coord]; // k phi 1/k phk
+#endif
+// ****  wrc ****
               p1p2p3sym[coord] = partpot[coord]*partpot[coord];
               p1p2p3sca[coord] = pot[coord]*partpot[coord];   
               p1p2p3nab[coord] = pot[coord]*p1p2p3nab[coord];
               p1p2p3tre[coord] = p1p2p3nab[coord]*partpot[coord];
               partpot[coord] = pot[coord]*pot[coord];       /** NOTE: now partpot is potential squared **/
+
             }
 
       MPI_Barrier(MPI_COMM_WORLD);
-      
-      if(ThisTask == 0) printf("Fourier transforming potential ...");
       rfftwnd_mpi(Forward_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
-          
-
-      if(ThisTask == 0) printf("Fourier transforming squared potential ...");
       rfftwnd_mpi(Forward_plan, 1, partpot, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
-          
-
-      if(ThisTask == 0) printf("Fourier transforming p1p2p3sym potential ...");
       rfftwnd_mpi(Forward_plan, 1, p1p2p3sym, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
-          
-
-      if(ThisTask == 0) printf("Fourier transforming p1p2p3sca potential ...");
       rfftwnd_mpi(Forward_plan, 1, p1p2p3sca, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
-          
-
-      if(ThisTask == 0) printf("Fourier transforming p1p2p3nab potential ...");
       rfftwnd_mpi(Forward_plan, 1, p1p2p3nab, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
-          
-
-      if(ThisTask == 0) printf("Fourier transforming p1p2p3tre potential ...");
       rfftwnd_mpi(Forward_plan, 1, p1p2p3tre, Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
-      fflush(stdout);
-          
+
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+      rfftwnd_mpi(Forward_plan, 1, p1p2p3_K12D, Workspace, FFTW_NORMAL_ORDER);
+      rfftwnd_mpi(Forward_plan, 1, p1p2p3_K12E, Workspace, FFTW_NORMAL_ORDER);
+      rfftwnd_mpi(Forward_plan, 1, p1p2p3_K12F, Workspace, FFTW_NORMAL_ORDER);
+      rfftwnd_mpi(Forward_plan, 1, p1p2p3_K12G, Workspace, FFTW_NORMAL_ORDER);
+#endif
+
+// ****  wrc ****
       MPI_Barrier(MPI_COMM_WORLD);
 
        /* divide by appropiate k's, sum terms according to non-local model */ 
        /* remove the N^3 I got by forwardfurier and put zero to zero mode */
 
       nmesh3 = ((unsigned int) Nmesh) * ((unsigned int) Nmesh ) * ((unsigned int) Nmesh);    
-
 
       for(ii = 0; ii < Local_nx; ii++)
         for(j = 0; j < Nmesh; j++)
@@ -820,49 +919,67 @@ void displacement_fields(void)
                           cpot[0].im=0.;
                           continue;
                         }
-                      
+
+// ****************************** DSJ *************************
+		    if(SphereMode == 1) {
+			  kmag = sqrt(kmag2);
+			  if(kmag * Box / (2 * PI) > Nsample / 2) {	/* select a sphere in k-space */
+				cpot[coord].re = 0.;
+				cpot[coord].im = 0.;
+				continue;
+			  }
+			}
+// ****************************** DSJ *************************
+                     
 #ifdef EQUIL_FNL
       /* fnl equilateral */
 // ****************************************************************************************** DSJ ********************************************************************************************************
-              cpot[coord].re = cpot[coord].re + Fnl * (-3*cpartpot[coord].re - 2*cp1p2p3sym[coord].re / kmag_2_over_3 + 4*cp1p2p3sca[coord].re / kmag_1_over_3 + 2*cp1p2p3nab[coord].re / kmag_2_over_3);
-              cpot[coord].im = cpot[coord].im + Fnl * (-3*cpartpot[coord].im - 2*cp1p2p3sym[coord].im / kmag_2_over_3 + 4*cp1p2p3sca[coord].im / kmag_1_over_3 + 2*cp1p2p3nab[coord].im / kmag_2_over_3); 
+              cpot[coord].re += Fnl * (-3.0 * cpartpot[coord].re - 2.0 * cp1p2p3sym[coord].re / kmag_2_over_3 + 4.0 * cp1p2p3sca[coord].re / kmag_1_over_3 + 2.0 * cp1p2p3nab[coord].re / kmag_2_over_3);
+              cpot[coord].im += Fnl * (-3.0 * cpartpot[coord].im - 2.0 * cp1p2p3sym[coord].im / kmag_2_over_3 + 4.0 * cp1p2p3sca[coord].im / kmag_1_over_3 + 2.0 * cp1p2p3nab[coord].im / kmag_2_over_3); 
 // ****************************************************************************************** DSJ ********************************************************************************************************
-              cpot[coord].re /= (double) nmesh3; 
-              cpot[coord].im /= (double) nmesh3; 
 #endif
 
 #ifdef ORTOG_FNL 
 // ****************************************************************************************** DSJ ********************************************************************************************************
-              cpot[coord].re = cpot[coord].re + Fnl * (-9*cpartpot[coord].re - 8*cp1p2p3sym[coord].re / kmag_2_over_3 + 10*cp1p2p3sca[coord].re / kmag_1_over_3 + 8*cp1p2p3nab[coord].re / kmag_2_over_3);
-              cpot[coord].im = cpot[coord].im + Fnl * (-9*cpartpot[coord].im - 8*cp1p2p3sym[coord].im / kmag_2_over_3 + 10*cp1p2p3sca[coord].im / kmag_1_over_3 + 8*cp1p2p3nab[coord].im / kmag_2_over_3);
+              cpot[coord].re += Fnl * (-9.0 * cpartpot[coord].re - 8.0 * cp1p2p3sym[coord].re / kmag_2_over_3 + 10.0 * cp1p2p3sca[coord].re / kmag_1_over_3 + 8.0 * cp1p2p3nab[coord].re / kmag_2_over_3);
+              cpot[coord].im += Fnl * (-9.0 * cpartpot[coord].im - 8.0 * cp1p2p3sym[coord].im / kmag_2_over_3 + 10.0 * cp1p2p3sca[coord].im / kmag_1_over_3 + 8.0 * cp1p2p3nab[coord].im / kmag_2_over_3);
 // ****************************************************************************************** DSJ ********************************************************************************************************
+#endif
+
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+              cpot[coord].re += 3*Fnl * (-(1.0+1.0/3.0*orth_p) * cpartpot[coord].re - 1.0/3.0*(2.0+20./9.*orth_p) * cp1p2p3sym[coord].re / kmag_2_over_3 + 2.0*(1.0+5.0/9.0*orth_p)*(1.0-orth_t) * cp1p2p3sca[coord].re / kmag_1_over_3 + 2.0*(1.0+5.0/9.0*orth_p)*orth_t* cp1p2p3nab[coord].re / kmag_2_over_3);
+              cpot[coord].re += 3*Fnl * (orth_p/27.0 * cp1p2p3_K12D[coord].re*kmag_2_over_3 - 20.0*orth_p/27.0 * cp1p2p3_K12E[coord].re / kmag_1_over_3 - 4.0*orth_p/9.0 * cp1p2p3_K12F[coord].re * kmag_1_over_3 + 10.0/9.0*orth_p * cp1p2p3_K12G[coord].re );
+              cpot[coord].im += 3*Fnl * (-(1.0+1.0/3.0*orth_p) * cpartpot[coord].im - 1.0/3.0*(2.0+20./9.*orth_p) * cp1p2p3sym[coord].im / kmag_2_over_3 + 2.0*(1.0+5.0/9.0*orth_p)*(1.0-orth_t) * cp1p2p3sca[coord].im / kmag_1_over_3 + 2.0*(1.0+5.0/9.0*orth_p)*orth_t* cp1p2p3nab[coord].im / kmag_2_over_3);
+              cpot[coord].im += 3*Fnl * (orth_p/27.0 * cp1p2p3_K12D[coord].im*kmag_2_over_3 - 20.0*orth_p/27.0 * cp1p2p3_K12E[coord].im / kmag_1_over_3 - 4.0*orth_p/9.0 * cp1p2p3_K12F[coord].im * kmag_1_over_3 + 10.0/9.0*orth_p * cp1p2p3_K12G[coord].im );
+#endif
+// ****  wrc ****
               cpot[coord].re /= (double) nmesh3; 
               cpot[coord].im /= (double) nmesh3; 
-#endif
-     
-                      if(i == 0 && j == 0 && k == 0)
-                        {
-                          cpot[0].re=0.;
-                          cpot[0].im=0.;
-                          continue;
-                        }
 
             }
-
 
       free(cpartpot);
       free(cp1p2p3sym);
       free(cp1p2p3sca);
       free(cp1p2p3nab);
       free(cp1p2p3tre);
-  
+// ****  wrc ****
+#ifdef ORTOG_LSS_FNL
+      free(cp1p2p3inv);
+      free(cp1p2p3_K12D);
+      free(cp1p2p3_K12E);
+      free(cp1p2p3_K12F);
+      free(cp1p2p3_K12G);
+#endif
+// ****  wrc ****
 
+
+      if (ThisTask == 0 ) print_timed_done(1);
+  
 #endif
 
-
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(ThisTask==0) printf("finished nongaussian potential \n");
-    fflush(stdout);
+  if (ThisTask == 0) {printf("Computing gradient of non-Gaussian potential..."); fflush(stdout);};
 
     /****** FINISHED NON LOCAL POTENTIAL OR LOCAL FNL, STILL IN NONGAUSSIAN SECTION ****/   
     /*****  Now 2LPT ****/
@@ -880,11 +997,6 @@ void displacement_fields(void)
   for(Type = MinType; Type <= MaxType; Type++)
 #endif
     {
-      if(ThisTask == 0)
-	{
-	  printf("\nstarting axes=%d...\n", axes);
-	  fflush(stdout);
-	}
 
       /* first, clean the array */
       for(i = 0; i < Local_nx; i++)
@@ -927,8 +1039,7 @@ void displacement_fields(void)
 
                      t_of_k = TransferFunc(kmag);
 
-                     twb = t_of_k * ( DstartFnl / Dplus ) / Beta;   
-
+                     twb = t_of_k / Dplus  / Beta;   
 
                      for(axes = 0; axes < 3; axes++)   
                                         {
@@ -940,14 +1051,16 @@ void displacement_fields(void)
 
       free(cpot);
 
+      if (ThisTask == 0 ) print_timed_done(1);
+
 #endif
 
 
        MPI_Barrier(MPI_COMM_WORLD);
-       if(ThisTask == 0) printf("Done Zeldovich.\n");
-       fflush(stdout);   
  
       /* Compute displacement gradient */
+
+      if (ThisTask == 0) {printf("Computing 2LPT potential..."); fflush(stdout);};
 
       for(i = 0; i < 6; i++)
 	{
@@ -998,9 +1111,7 @@ void displacement_fields(void)
 	    }
 
 
-      if(ThisTask == 0) printf("Fourier transforming displacement gradient...");
       for(i = 0; i < 6; i++) rfftwnd_mpi(Inverse_plan, 1, digrad[i], Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
 
       /* Compute second order source and store it in digrad[3]*/
 
@@ -1016,9 +1127,7 @@ void displacement_fields(void)
                 -digrad[1][coord]*digrad[1][coord]-digrad[2][coord]*digrad[2][coord]-digrad[4][coord]*digrad[4][coord];
 	    }
 
-      if(ThisTask == 0) printf("Fourier transforming second order source...");
       rfftwnd_mpi(Forward_plan, 1, digrad[3], Workspace, FFTW_NORMAL_ORDER);
-      if(ThisTask == 0) printf("Done.\n");
       
       /* The memory allocated for cdigrad[0], [1], and [2] will be used for 2nd order displacements */
       /* Freeing the rest. cdigrad[3] still has 2nd order displacement source, free later */
@@ -1097,14 +1206,11 @@ void displacement_fields(void)
       free(cdigrad[3]);
 
       MPI_Barrier(MPI_COMM_WORLD);
-      if(ThisTask == 0) printf("ZA and 2nd HERE are DONE  \n");
 
       /* Now, both cdisp, and cdisp2 have the ZA and 2nd order displacements */
 
       for(axes = 0; axes < 3; axes++)
 	{
-          if(ThisTask == 0) printf("Fourier transforming displacements, axis %d.\n",axes);
-
 	  rfftwnd_mpi(Inverse_plan, 1, disp[axes], Workspace, FFTW_NORMAL_ORDER);
 	  rfftwnd_mpi(Inverse_plan, 1, disp2[axes], Workspace, FFTW_NORMAL_ORDER);
 
@@ -1157,7 +1263,10 @@ void displacement_fields(void)
 	      MPI_Wait(&request, &status);
 	    }
 	}
-      
+
+      if (ThisTask == 0 ) print_timed_done(21);
+      if (ThisTask == 0) {printf("Computing displacements and velocitites..."); fflush(stdout);};
+
       /* read-out displacements */
 
       nmesh3 = Nmesh * Nmesh * Nmesh;
@@ -1247,7 +1356,7 @@ void displacement_fields(void)
 	}
     }
  
-
+      if (ThisTask == 0 ) print_timed_done(6);
 
   for(axes = 0; axes < 3; axes++) free(cdisp[axes]);
   for(axes = 0; axes < 3; axes++) free(cdisp2[axes]);
@@ -1256,11 +1365,11 @@ void displacement_fields(void)
 
   MPI_Reduce(&maxdisp, &max_disp_glob, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-  if(ThisTask == 0)
+/*  if(ThisTask == 0)
     {
       printf("\nMaximum displacement (1D): %g kpc/h, in units of the part-spacing= %g\n",
 	     max_disp_glob, max_disp_glob / (Box / Nmesh));
-    }
+    }*/
 }
 
 double periodic_wrap(double x)
@@ -1278,7 +1387,6 @@ double periodic_wrap(double x)
 void set_units(void)		/* ... set some units */
 {
   UnitTime_in_s = UnitLength_in_cm / UnitVelocity_in_cm_per_s;
-
   G = GRAVITY / pow(UnitLength_in_cm, 3) * UnitMass_in_g * pow(UnitTime_in_s, 2);
   Hubble = HUBBLE * UnitTime_in_s;
 }
@@ -1305,14 +1413,6 @@ void initialize_ffts(void)
   Local_nx_table = malloc(sizeof(int) * NTask);
   MPI_Allgather(&Local_nx, 1, MPI_INT, Local_nx_table, 1, MPI_INT, MPI_COMM_WORLD);
 
-  if(ThisTask == 0)
-    {
-      for(i = 0; i < NTask; i++)
-	printf("Task=%d Local_nx=%d\n", i, Local_nx_table[i]);
-      fflush(stdout);
-    }
-
-
   Slab_to_task = malloc(sizeof(int) * Nmesh);
   slab_to_task_local = malloc(sizeof(int) * Nmesh);
 
@@ -1325,8 +1425,6 @@ void initialize_ffts(void)
   MPI_Allreduce(slab_to_task_local, Slab_to_task, Nmesh, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
   free(slab_to_task_local);
-
-
 
   additional = (Nmesh) * (2 * (Nmesh / 2 + 1));	/* additional plane on the right side */
 

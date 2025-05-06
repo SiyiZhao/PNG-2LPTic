@@ -1,5 +1,7 @@
 #include "allvars.h"
 
+clock_t start_time;
+clock_t previous_time;
 
 struct io_header_1 header1, header;
 
@@ -39,9 +41,7 @@ struct part_data *P;
 int Nglass;
 
 double InitTime;
-double FnlTime;
 double Redshift;
-double RedshiftFnl;
 double MassTable[6];
 double Fnl; 
 // *** FAVN/DSJ ***
@@ -75,7 +75,8 @@ double OmegaBaryon, HubbleParam;
 double ShapeGamma;
 double PrimordialIndex;
 double Anorm;
-double Dplus, DstartFnl;			/* growth factor at output=InitTime and growth factor for initial potential */
+double Dplus;			/* growth factor at output=InitTime and growth factor for initial potential */
+double D0;    /* matter/DE domination growth factor normalized to the scale factor at early times */  
 
 #ifdef DIFFERENT_TRANSFER_FUNC
 int Type, MinType, MaxType;

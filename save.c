@@ -53,13 +53,17 @@ void save_local_data(void)
   size_t bytes;
   float *block;
   int *blockid;
+#ifndef NO64BITID
   long long *blocklongid;
-  int blockmaxlen, maxidlen, maxlongidlen;
+#endif
+  int blockmaxlen, maxlongidlen;
   int4byte dummy;
   FILE *fd;
   char buf[300];
   int i, k, pc;
+#ifdef  PRODUCEGAS
   double meanspacing, shift_gas, shift_dm;
+#endif
 
 
   if(NumPart == 0)
@@ -149,10 +153,11 @@ void save_local_data(void)
   my_fwrite(&header, sizeof(header), 1, fd);
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
 
-
+#ifdef  PRODUCEGAS
   meanspacing = Box / pow(TotNumPart, 1.0 / 3);
   shift_gas = -0.5 * (Omega - OmegaBaryon) / (Omega) * meanspacing;
   shift_dm = +0.5 * OmegaBaryon / (Omega) * meanspacing;
+#endif
 
 
   if(!(block = malloc(bytes = BUFFER * 1024 * 1024)))
@@ -164,8 +169,9 @@ void save_local_data(void)
   blockmaxlen = bytes / (3 * sizeof(float));
 
   blockid = (int *) block;
+#ifndef NO64BITID
   blocklongid = (long long *) block;
-  maxidlen = bytes / (sizeof(int));
+#endif
   maxlongidlen = bytes / (sizeof(long long));
 
   /* write coordinates */

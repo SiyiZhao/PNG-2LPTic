@@ -1,9 +1,9 @@
-#include <rfftw_mpi.h>
+#include <drfftw_mpi.h>
+#include <time.h>
 
 #define  PI          3.14159265358979323846 
 #define  GRAVITY     6.672e-8
 #define  HUBBLE      3.2407789e-18   /* in h/sec */
-
 
 double PowerSpec(double kmag);
 double GrowthFactor(double astart, double aend);
@@ -48,6 +48,10 @@ extern struct io_header_1
 }
 header, header1;
 
+
+
+extern clock_t start_time;
+extern clock_t previous_time;
 
 extern int      Nglass;
 extern int      *Local_nx_table;
@@ -94,9 +98,7 @@ extern struct part_data
 
 
 extern double InitTime;
-extern double FnlTime;
 extern double Redshift;
-extern double RedshiftFnl;
 extern double MassTable[6];
 extern double Fnl;
 // ******* FAVN/DSJ ******
@@ -134,7 +136,7 @@ extern double ShapeGamma;
 extern double Anorm;
 
 extern double Dplus; /* growth factor where output set by InitTime */
-extern double DstartFnl; /* growth factor for initial potential */ 
+extern double D0;    /* matter/DE domination growth factor normalized to the scale factor at early times */  
 
 #ifdef DIFFERENT_TRANSFER_FUNC
 extern int Type, MinType, MaxType;

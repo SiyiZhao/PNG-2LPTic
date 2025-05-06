@@ -52,7 +52,8 @@ CC       =  mpicc #-g -Wall -fbounds-check    # sets the C-compiler (default)
 OPTIMIZE =   -O3 -Wall    # optimization and warning flags (default)
 
 
-FFTW_LIB =  $(FFTW_LIBS) -ldrfftw_mpi -ldfftw_mpi -ldrfftw -ldfftw
+#FFTW_LIB =  $(FFTW_LIBS) -ldrfftw_mpi -ldfftw_mpi -ldrfftw -ldfftw
+FFTW_LIB =  $(FFTW_LIBS) -lrfftw_mpi -lfftw_mpi -lrfftw -lfftw
 
 LIBS   =   -lm  $(MPICHLIB)  $(FFTW_LIB)  $(GSL_LIBS)  -lgsl -lgslcblas
 

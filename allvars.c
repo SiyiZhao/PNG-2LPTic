@@ -17,8 +17,6 @@ int Nmesh, Nsample;
 
 long long IDStart;
 
-
-
 char GlassFile[500];
 char FileWithInputSpectrum[500];
 char FileWithInputTransfer[500]; 
@@ -44,6 +42,15 @@ double InitTime;
 double Redshift;
 double MassTable[6];
 double Fnl; 
+
+// *** Collider Addition (Start) ***
+int Spin;
+double Klong_max;
+double Delta;
+double Nu;
+double Phase;
+// *** Collider Addition (End) ***
+
 // *** FAVN/DSJ ***
 int FixedAmplitude;
 int PhaseFlip;
@@ -85,3 +92,11 @@ int Type, MinType, MaxType;
 int WDM_On;
 int WDM_Vtherm_On;
 double WDM_PartMass_in_kev;
+
+#ifdef OUTPUT_DF
+// define the pointers of the modes coordinates, amplitudes and phases
+long long *coord_DF, *coord_lin;
+int  *coord_i, *coord_j, *coord_k; // FIX THIS
+float     *amplitudes, *phases;
+float     *phi_lin;
+#endif

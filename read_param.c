@@ -68,6 +68,33 @@ void read_parameterfile(char *fname)
   addr[nt] = &Fnl;
   id[nt++] = FLOAT;
 
+// *** Collider Addition (Start) ***
+
+// Variables common to all collider models
+  strcpy(tag[nt], "Spin");
+  addr[nt] = &Spin; // Spin of field (must be even integer)
+  id[nt++] = INT;
+
+  strcpy(tag[nt], "Klong_max");
+  addr[nt] = &Klong_max; // Maximum long mode used for high-pass filter (units of kF)
+  id[nt++] = FLOAT;
+
+// Variables only for intermediate-mass particles (QSFI_FNL mode)
+  strcpy(tag[nt], "Delta"); // Sets order of pole
+  addr[nt] = &Delta;
+  id[nt++] = FLOAT;
+
+// Variables only for massive particles with m/H>3/2 (OSC_FNL mode)
+  strcpy(tag[nt], "Nu"); // Frequency of bispectrum oscillations
+  addr[nt] = &Nu;
+  id[nt++] = FLOAT;
+
+  strcpy(tag[nt], "Phase"); // Phase of bispectrum oscillations
+  addr[nt] = &Phase;
+  id[nt++] = FLOAT;
+
+// *** Collider Addition (End) ***
+
 // ********** FAVN/DSJ  ************
   strcpy(tag[nt], "FixedAmplitude");
   addr[nt] = &FixedAmplitude;

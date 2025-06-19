@@ -64,3 +64,7 @@ void add_WDM_thermal_speeds(float *vel);
 
 int compare_type(const void *a, const void *b);
 
+#ifdef OUTPUT_DF
+void write_density_field_data(void);
+void write_phi_lin_field_data(void);
+#endif 

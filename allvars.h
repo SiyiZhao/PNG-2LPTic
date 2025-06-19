@@ -101,6 +101,15 @@ extern double InitTime;
 extern double Redshift;
 extern double MassTable[6];
 extern double Fnl;
+
+// *** Collider Addition (Start) ***
+extern int Spin;
+extern double Klong_max;
+extern double Delta;
+extern double Nu;
+extern double Phase;
+// *** Collider Addition (End) ***
+
 // ******* FAVN/DSJ ******
 extern int FixedAmplitude;
 extern int PhaseFlip;
@@ -145,3 +154,11 @@ extern int Type, MinType, MaxType;
 extern int    WDM_On;
 extern int    WDM_Vtherm_On;
 extern double WDM_PartMass_in_kev;
+
+#ifdef OUTPUT_DF
+// define the pointers for the modes coordinates, amplitudes and phases
+extern long long *coord_DF, *coord_lin; // Saved coordinates of array. Renamed to avoid issues with naming convention.
+extern int  *coord_i, *coord_j, *coord_k; // FIX THIS
+extern float     *amplitudes, *phases, *phi_lin;
+
+#endif

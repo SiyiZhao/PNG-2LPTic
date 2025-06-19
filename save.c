@@ -1,51 +1,191 @@
 #include <math.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "allvars.h"
 #include "proto.h"
 
+// Collider Addition (Start)
+#ifdef OUTPUT_DF
+void write_density_field_data(void)
+{
+
+  int nprocgroup, groupTask, masterTask;
+  char buf[1000];
+  FILE *fd;
+
+  // if(ThisTask == 0)
+  // printf("\n->riting density field... ");
+
+  if ((NTask < NumFilesWrittenInParallel))
+  {
+    printf("Fatal error.\nNumber of processors must be a smaller or equal than `NumFilesWrittenInParallel'.\n");
+    FatalError(24131);
+  }
+
+  nprocgroup = NTask / NumFilesWrittenInParallel;
+
+  if ((NTask % NumFilesWrittenInParallel))
+    nprocgroup++;
+
+  masterTask = (ThisTask / nprocgroup) * nprocgroup;
+
+  for (groupTask = 0; groupTask < nprocgroup; groupTask++)
+  {
+    if (ThisTask == (masterTask + groupTask))
+    {
+      // Make sub-directory to store linear fields.
+      // mkdir(strcat(OutputDir, "/linear_fields"), 0700);
+
+      // save coordinates, amplitudes and phases here
+      sprintf(buf, "%s/linear_fields/Coordinates_ptype_%d.%d", OutputDir, 1, ThisTask); // Sam changed "Type" to "1" for single coordinate
+      fd = fopen(buf, "w");
+      my_fwrite(&NTaskWithN, sizeof(int), 1, fd); // save the number of subfiles
+      my_fwrite(&Nmesh, sizeof(int), 1, fd);      // save Nmesh
+      my_fwrite(&Local_nx, sizeof(int), 1, fd);   // save Local_nx
+      my_fwrite(coord_DF, sizeof(long long), Local_nx * Nmesh * (Nmesh / 2 + 1), fd);
+      fclose(fd);
+
+      sprintf(buf, "%s/linear_fields/Amplitudes_ptype_%d.%d", OutputDir, 1, ThisTask);
+      fd = fopen(buf, "w");
+      my_fwrite(&NTaskWithN, sizeof(int), 1, fd); // save the number of subfiles
+      my_fwrite(&Nmesh, sizeof(int), 1, fd);      // save Nmesh
+      my_fwrite(&Local_nx, sizeof(int), 1, fd);   // save Local_nx
+      my_fwrite(amplitudes, sizeof(float), Local_nx * Nmesh * (Nmesh / 2 + 1), fd);
+      fclose(fd);
+
+      sprintf(buf, "%s/linear_fields/Phases_ptype_%d.%d", OutputDir, 1, ThisTask);
+      fd = fopen(buf, "w");
+      my_fwrite(&NTaskWithN, sizeof(int), 1, fd); // save the number of subfiles
+      my_fwrite(&Nmesh, sizeof(int), 1, fd);      // save Nmesh
+      my_fwrite(&Local_nx, sizeof(int), 1, fd);   // save Local_nx
+      my_fwrite(phases, sizeof(float), Local_nx * Nmesh * (Nmesh / 2 + 1), fd);
+      fclose(fd);
+    }
+
+    //
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
+
+  if (ThisTask == 0)
+    printf("done\n");
+}
+
+void write_phi_lin_field_data(void)
+{
+  /*
+  Outputs phi_lin(x) on a real space grid. Note that for models with PNG this is
+  the non-Gaussian potential.
+  */
+  int nprocgroup, groupTask, masterTask;
+  char buf[1000];
+  FILE *fd;
+
+  if(ThisTask == 0)
+  printf("\n->Writing linear phi field... ");
+
+  if ((NTask < NumFilesWrittenInParallel))
+  {
+    printf("Fatal error.\nNumber of processors must be a smaller or equal than `NumFilesWrittenInParallel'.\n");
+    FatalError(24131);
+  }
+
+  nprocgroup = NTask / NumFilesWrittenInParallel;
+
+  if ((NTask % NumFilesWrittenInParallel))
+    nprocgroup++;
+
+  masterTask = (ThisTask / nprocgroup) * nprocgroup;
+
+  for (groupTask = 0; groupTask < nprocgroup; groupTask++)
+  {
+    if (ThisTask == (masterTask + groupTask))
+    {
+     
+      // save coordinates, amplitudes and phases here
+      snprintf(buf, sizeof(buf), "%s/linear_fields/Coordinates_lin_ptype_%d.%d", OutputDir, 1, ThisTask); // Sam changed "Type" to "0" for single coordinate
+      fd = fopen(buf, "w");
+      my_fwrite(&NTaskWithN, sizeof(int), 1, fd); // save the number of subfiles
+      my_fwrite(&Nmesh, sizeof(int), 1, fd);      // save Nmesh
+      my_fwrite(&Local_nx, sizeof(int), 1, fd);   // save Local_nx
+      my_fwrite(coord_lin, sizeof(long long), Local_nx * Nmesh * (Nmesh), fd);
+      fclose(fd);
+
+      snprintf(buf, sizeof(buf), "%s/linear_fields/phi_lin_ptype_%d.%d", OutputDir, 1, ThisTask);
+      fd = fopen(buf, "w");
+      my_fwrite(&NTaskWithN, sizeof(int), 1, fd); // save the number of subfiles
+      my_fwrite(&Nmesh, sizeof(int), 1, fd);      // save Nmesh
+      my_fwrite(&Local_nx, sizeof(int), 1, fd);   // save Local_nx
+      my_fwrite(phi_lin, sizeof(float), Local_nx * Nmesh * (Nmesh), fd);
+      fclose(fd);
 
 
+      snprintf(buf, sizeof(buf), "%s/linear_fields/Coordinates_i_ptype_%d.%d", OutputDir, 1, ThisTask); // Sam changed "Type" to "0" for single coordinate
+      fd = fopen(buf, "w");
+      my_fwrite(&NTaskWithN, sizeof(int), 1, fd); // save the number of subfiles
+      my_fwrite(&Nmesh, sizeof(int), 1, fd);      // save Nmesh
+      my_fwrite(&Local_nx, sizeof(int), 1, fd);   // save Local_nx
+      my_fwrite(coord_i, sizeof(int), Local_nx * Nmesh * (Nmesh), fd);
+      fclose(fd);
+
+      snprintf(buf, sizeof(buf), "%s/linear_fields/Coordinates_j_ptype_%d.%d", OutputDir, 1, ThisTask); // Sam changed "Type" to "0" for single coordinate
+      fd = fopen(buf, "w");
+      my_fwrite(&NTaskWithN, sizeof(int), 1, fd); // save the number of subfiles
+      my_fwrite(&Nmesh, sizeof(int), 1, fd);      // save Nmesh
+      my_fwrite(&Local_nx, sizeof(int), 1, fd);   // save Local_nx
+      my_fwrite(coord_j, sizeof(int), Local_nx * Nmesh * (Nmesh), fd);
+      fclose(fd);
+
+      snprintf(buf, sizeof(buf), "%s/linear_fields/Coordinates_k_ptype_%d.%d", OutputDir, 1, ThisTask); // Sam changed "Type" to "0" for single coordinate
+      fd = fopen(buf, "w");
+      my_fwrite(&NTaskWithN, sizeof(int), 1, fd); // save the number of subfiles
+      my_fwrite(&Nmesh, sizeof(int), 1, fd);      // save Nmesh
+      my_fwrite(&Local_nx, sizeof(int), 1, fd);   // save Local_nx
+      my_fwrite(coord_k, sizeof(int), Local_nx * Nmesh * (Nmesh), fd);
+      fclose(fd);
+    }
+
+    //
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
+
+  if (ThisTask == 0)
+    printf("done\n");
+}
+#endif
+// Collider Addition (End)
 
 void write_particle_data(void)
 {
   int nprocgroup, groupTask, masterTask;
 
-  if(ThisTask == 0)
+  if (ThisTask == 0)
     printf("\nwriting initial conditions... \n");
-
-
-  if((NTask < NumFilesWrittenInParallel))
-    {
-      printf
-	("Fatal error.\nNumber of processors must be a smaller or equal than `NumFilesWrittenInParallel'.\n");
-      FatalError(24131);
-    }
-
+  if ((NTask < NumFilesWrittenInParallel))
+  {
+    printf("Fatal error.\nNumber of processors must be a smaller or equal than `NumFilesWrittenInParallel'.\n");
+    FatalError(24131);
+  }
 
   nprocgroup = NTask / NumFilesWrittenInParallel;
 
-  if((NTask % NumFilesWrittenInParallel))
+  if ((NTask % NumFilesWrittenInParallel))
     nprocgroup++;
 
   masterTask = (ThisTask / nprocgroup) * nprocgroup;
 
+  for (groupTask = 0; groupTask < nprocgroup; groupTask++)
+  {
+    if (ThisTask == (masterTask + groupTask)) /* ok, it's this processor's turn */
+      save_local_data();
 
-  for(groupTask = 0; groupTask < nprocgroup; groupTask++)
-    {
-      if(ThisTask == (masterTask + groupTask))	/* ok, it's this processor's turn */
-	save_local_data();
+    /* wait inside the group */
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
 
-      /* wait inside the group */
-      MPI_Barrier(MPI_COMM_WORLD);
-    }
-
-  if(ThisTask == 0)
+  if (ThisTask == 0)
     printf("done with writing initial conditions.\n");
 }
-
-
-
 
 void save_local_data(void)
 {
@@ -61,56 +201,52 @@ void save_local_data(void)
   FILE *fd;
   char buf[300];
   int i, k, pc;
-#ifdef  PRODUCEGAS
+#ifdef PRODUCEGAS
   double meanspacing, shift_gas, shift_dm;
 #endif
 
-
-  if(NumPart == 0)
+  if (NumPart == 0)
     return;
 
-  if(NTaskWithN > 1)
+  if (NTaskWithN > 1)
     sprintf(buf, "%s/%s.%d", OutputDir, FileBase, ThisTask);
   else
     sprintf(buf, "%s/%s", OutputDir, FileBase);
 
-  if(!(fd = fopen(buf, "w")))
-    {
-      printf("Error. Can't write in file '%s'\n", buf);
-      FatalError(10);
-    }
+  if (!(fd = fopen(buf, "w")))
+  {
+    printf("Error. Can't write in file '%s'\n", buf);
+    FatalError(10);
+  }
 
-  for(i = 0; i < 6; i++)
-    {
-      header.npart[i] = 0;
-      header.npartTotal[i] = 0;
-      header.mass[i] = 0;
-    }
-
+  for (i = 0; i < 6; i++)
+  {
+    header.npart[i] = 0;
+    header.npartTotal[i] = 0;
+    header.mass[i] = 0;
+  }
 
 #ifdef MULTICOMPONENTGLASSFILE
-  qsort(P, NumPart, sizeof(struct part_data), compare_type);  /* sort particles by type, because that's how they should be stored in a gadget binary file */
+  qsort(P, NumPart, sizeof(struct part_data), compare_type); /* sort particles by type, because that's how they should be stored in a gadget binary file */
 
-  for(i = 0; i < 3; i++)
+  for (i = 0; i < 3; i++)
     header.npartTotal[i] = header1.npartTotal[i + 1] * GlassTileFac * GlassTileFac * GlassTileFac;
 
-  for(i = 0; i < NumPart; i++)
+  for (i = 0; i < NumPart; i++)
     header.npart[P[i].Type]++;
 
-  if(header.npartTotal[0])
+  if (header.npartTotal[0])
     header.mass[0] =
-      (OmegaBaryon) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box, 3) / (header.npartTotal[0]);
+        (OmegaBaryon) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box, 3) / (header.npartTotal[0]);
 
-  if(header.npartTotal[1])
+  if (header.npartTotal[1])
     header.mass[1] =
-      (Omega - OmegaBaryon - OmegaDM_2ndSpecies) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box,
-											    3) /
-      (header.npartTotal[1]);
+        (Omega - OmegaBaryon - OmegaDM_2ndSpecies) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box, 3) /
+        (header.npartTotal[1]);
 
-  if(header.npartTotal[2])
+  if (header.npartTotal[2])
     header.mass[2] =
-      (OmegaDM_2ndSpecies) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box, 3) / (header.npartTotal[2]);
-
+        (OmegaDM_2ndSpecies) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box, 3) / (header.npartTotal[2]);
 
 #else
 
@@ -119,14 +255,13 @@ void save_local_data(void)
   header.npartTotal[2] = (TotNumPart >> 32);
   header.mass[1] = (Omega) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box, 3) / TotNumPart;
 
-#ifdef  PRODUCEGAS
+#ifdef PRODUCEGAS
   header.npart[0] = NumPart;
   header.npartTotal[0] = TotNumPart;
   header.mass[0] = (OmegaBaryon) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box, 3) / TotNumPart;
   header.mass[1] = (Omega - OmegaBaryon) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box, 3) / TotNumPart;
 #endif
 #endif
-
 
   header.time = InitTime;
   header.redshift = 1.0 / InitTime - 1;
@@ -153,129 +288,125 @@ void save_local_data(void)
   my_fwrite(&header, sizeof(header), 1, fd);
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
 
-#ifdef  PRODUCEGAS
+#ifdef PRODUCEGAS
   meanspacing = Box / pow(TotNumPart, 1.0 / 3);
-  shift_gas = -0.5 * (Omega - OmegaBaryon) / (Omega) * meanspacing;
-  shift_dm = +0.5 * OmegaBaryon / (Omega) * meanspacing;
+  shift_gas = -0.5 * (Omega - OmegaBaryon) / (Omega)*meanspacing;
+  shift_dm = +0.5 * OmegaBaryon / (Omega)*meanspacing;
 #endif
 
-
-  if(!(block = malloc(bytes = BUFFER * 1024 * 1024)))
-    {
-      printf("failed to allocate memory for `block' (%g bytes).\n", (double)bytes);
-      FatalError(24);
-    }
+  if (!(block = malloc(bytes = BUFFER * 1024 * 1024)))
+  {
+    printf("failed to allocate memory for `block' (%g bytes).\n", (double)bytes);
+    FatalError(24);
+  }
 
   blockmaxlen = bytes / (3 * sizeof(float));
 
-  blockid = (int *) block;
+  blockid = (int *)block;
 #ifndef NO64BITID
-  blocklongid = (long long *) block;
+  blocklongid = (long long *)block;
 #endif
   maxlongidlen = bytes / (sizeof(long long));
 
   /* write coordinates */
   dummy = sizeof(float) * 3 * NumPart;
-#ifdef  PRODUCEGAS
+#ifdef PRODUCEGAS
   dummy *= 2;
 #endif
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
-  for(i = 0, pc = 0; i < NumPart; i++)
+  for (i = 0, pc = 0; i < NumPart; i++)
+  {
+    for (k = 0; k < 3; k++)
     {
-      for(k = 0; k < 3; k++)
-	{
-	  block[3 * pc + k] = P[i].Pos[k];
-#ifdef  PRODUCEGAS
-	  block[3 * pc + k] = periodic_wrap(P[i].Pos[k] + shift_gas);
+      block[3 * pc + k] = P[i].Pos[k];
+#ifdef PRODUCEGAS
+      block[3 * pc + k] = periodic_wrap(P[i].Pos[k] + shift_gas);
 #endif
-	}
-
-      pc++;
-
-      if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), 3 * pc, fd);
-	  pc = 0;
-	}
     }
-  if(pc > 0)
-    my_fwrite(block, sizeof(float), 3 * pc, fd);
-#ifdef  PRODUCEGAS
-  for(i = 0, pc = 0; i < NumPart; i++)
+
+    pc++;
+
+    if (pc == blockmaxlen)
     {
-      for(k = 0; k < 3; k++)
-	{
-	  block[3 * pc + k] = periodic_wrap(P[i].Pos[k] + shift_dm);
-	}
-
-      pc++;
-
-      if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), 3 * pc, fd);
-	  pc = 0;
-	}
+      my_fwrite(block, sizeof(float), 3 * pc, fd);
+      pc = 0;
     }
-  if(pc > 0)
+  }
+  if (pc > 0)
+    my_fwrite(block, sizeof(float), 3 * pc, fd);
+#ifdef PRODUCEGAS
+  for (i = 0, pc = 0; i < NumPart; i++)
+  {
+    for (k = 0; k < 3; k++)
+    {
+      block[3 * pc + k] = periodic_wrap(P[i].Pos[k] + shift_dm);
+    }
+
+    pc++;
+
+    if (pc == blockmaxlen)
+    {
+      my_fwrite(block, sizeof(float), 3 * pc, fd);
+      pc = 0;
+    }
+  }
+  if (pc > 0)
     my_fwrite(block, sizeof(float), 3 * pc, fd);
 #endif
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
-
-
 
   /* write velocities */
   dummy = sizeof(float) * 3 * NumPart;
-#ifdef  PRODUCEGAS
+#ifdef PRODUCEGAS
   dummy *= 2;
 #endif
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
-  for(i = 0, pc = 0; i < NumPart; i++)
-    {
-      for(k = 0; k < 3; k++)
-	block[3 * pc + k] = P[i].Vel[k];
+  for (i = 0, pc = 0; i < NumPart; i++)
+  {
+    for (k = 0; k < 3; k++)
+      block[3 * pc + k] = P[i].Vel[k];
 
 #ifdef MULTICOMPONENTGLASSFILE
-      if(WDM_On == 1 && WDM_Vtherm_On == 1 && P[i].Type == 1)
-	add_WDM_thermal_speeds(&block[3 * pc]);
+    if (WDM_On == 1 && WDM_Vtherm_On == 1 && P[i].Type == 1)
+      add_WDM_thermal_speeds(&block[3 * pc]);
 #else
 #ifndef PRODUCEGAS
-      if(WDM_On == 1 && WDM_Vtherm_On == 1)
-	add_WDM_thermal_speeds(&block[3 * pc]);
+    if (WDM_On == 1 && WDM_Vtherm_On == 1)
+      add_WDM_thermal_speeds(&block[3 * pc]);
 #endif
 #endif
 
-      pc++;
+    pc++;
 
-      if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), 3 * pc, fd);
-	  pc = 0;
-	}
+    if (pc == blockmaxlen)
+    {
+      my_fwrite(block, sizeof(float), 3 * pc, fd);
+      pc = 0;
     }
-  if(pc > 0)
+  }
+  if (pc > 0)
     my_fwrite(block, sizeof(float), 3 * pc, fd);
 #ifdef PRODUCEGAS
-  for(i = 0, pc = 0; i < NumPart; i++)
+  for (i = 0, pc = 0; i < NumPart; i++)
+  {
+    for (k = 0; k < 3; k++)
+      block[3 * pc + k] = P[i].Vel[k];
+
+    if (WDM_On == 1 && WDM_Vtherm_On == 1)
+      add_WDM_thermal_speeds(&block[3 * pc]);
+
+    pc++;
+
+    if (pc == blockmaxlen)
     {
-      for(k = 0; k < 3; k++)
-	block[3 * pc + k] = P[i].Vel[k];
-
-      if(WDM_On == 1 && WDM_Vtherm_On == 1)
-	add_WDM_thermal_speeds(&block[3 * pc]);
-
-      pc++;
-
-      if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), 3 * pc, fd);
-	  pc = 0;
-	}
+      my_fwrite(block, sizeof(float), 3 * pc, fd);
+      pc = 0;
     }
-  if(pc > 0)
+  }
+  if (pc > 0)
     my_fwrite(block, sizeof(float), 3 * pc, fd);
 #endif
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
-
 
   /* write particle ID */
 #ifdef NO64BITID
@@ -283,170 +414,160 @@ void save_local_data(void)
 #else
   dummy = sizeof(long long) * NumPart;
 #endif
-#ifdef  PRODUCEGAS
+#ifdef PRODUCEGAS
   dummy *= 2;
 #endif
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
-  for(i = 0, pc = 0; i < NumPart; i++)
-    {
+  for (i = 0, pc = 0; i < NumPart; i++)
+  {
 #ifdef NO64BITID
-      blockid[pc] = P[i].ID;
+    blockid[pc] = P[i].ID;
 #else
-      blocklongid[pc] = P[i].ID;
+    blocklongid[pc] = P[i].ID;
 #endif
 
-      pc++;
+    pc++;
 
-      if(pc == maxlongidlen)
-	{
-#ifdef NO64BITID
-	  my_fwrite(blockid, sizeof(int), pc, fd);
-#else
-	  my_fwrite(blocklongid, sizeof(long long), pc, fd);
-#endif
-	  pc = 0;
-	}
-    }
-  if(pc > 0)
+    if (pc == maxlongidlen)
     {
 #ifdef NO64BITID
       my_fwrite(blockid, sizeof(int), pc, fd);
 #else
       my_fwrite(blocklongid, sizeof(long long), pc, fd);
 #endif
+      pc = 0;
     }
+  }
+  if (pc > 0)
+  {
+#ifdef NO64BITID
+    my_fwrite(blockid, sizeof(int), pc, fd);
+#else
+    my_fwrite(blocklongid, sizeof(long long), pc, fd);
+#endif
+  }
 
 #ifdef PRODUCEGAS
-  for(i = 0, pc = 0; i < NumPart; i++)
-    {
+  for (i = 0, pc = 0; i < NumPart; i++)
+  {
 #ifdef NO64BITID
-      blockid[pc] = P[i].ID + TotNumPart;
+    blockid[pc] = P[i].ID + TotNumPart;
 #else
-      blocklongid[pc] = P[i].ID + TotNumPart;
+    blocklongid[pc] = P[i].ID + TotNumPart;
 #endif
 
-      pc++;
+    pc++;
 
-      if(pc == maxlongidlen)
-	{
-#ifdef NO64BITID
-	  my_fwrite(blockid, sizeof(int), pc, fd);
-#else
-	  my_fwrite(blocklongid, sizeof(long long), pc, fd);
-#endif
-	  pc = 0;
-	}
-    }
-  if(pc > 0)
+    if (pc == maxlongidlen)
     {
 #ifdef NO64BITID
       my_fwrite(blockid, sizeof(int), pc, fd);
 #else
       my_fwrite(blocklongid, sizeof(long long), pc, fd);
 #endif
+      pc = 0;
     }
+  }
+  if (pc > 0)
+  {
+#ifdef NO64BITID
+    my_fwrite(blockid, sizeof(int), pc, fd);
+#else
+    my_fwrite(blocklongid, sizeof(long long), pc, fd);
+#endif
+  }
 #endif
 
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
 
-
-
-
-
   /* write zero temperatures if needed */
-#ifdef  PRODUCEGAS
+#ifdef PRODUCEGAS
   dummy = sizeof(float) * NumPart;
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
-  for(i = 0, pc = 0; i < NumPart; i++)
+  for (i = 0, pc = 0; i < NumPart; i++)
+  {
+    block[pc] = 0;
+
+    pc++;
+
+    if (pc == blockmaxlen)
+    {
+      my_fwrite(block, sizeof(float), pc, fd);
+      pc = 0;
+    }
+  }
+  if (pc > 0)
+    my_fwrite(block, sizeof(float), pc, fd);
+  my_fwrite(&dummy, sizeof(dummy), 1, fd);
+#endif
+
+  /* write zero temperatures if needed */
+#ifdef MULTICOMPONENTGLASSFILE
+  if (header.npart[0])
+  {
+    dummy = sizeof(float) * header.npart[0];
+    my_fwrite(&dummy, sizeof(dummy), 1, fd);
+
+    for (i = 0, pc = 0; i < header.npart[0]; i++)
     {
       block[pc] = 0;
 
       pc++;
 
-      if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), pc, fd);
-	  pc = 0;
-	}
+      if (pc == blockmaxlen)
+      {
+        my_fwrite(block, sizeof(float), pc, fd);
+        pc = 0;
+      }
     }
-  if(pc > 0)
-    my_fwrite(block, sizeof(float), pc, fd);
-  my_fwrite(&dummy, sizeof(dummy), 1, fd);
+    if (pc > 0)
+      my_fwrite(block, sizeof(float), pc, fd);
+    my_fwrite(&dummy, sizeof(dummy), 1, fd);
+  }
 #endif
-
-
-  /* write zero temperatures if needed */
-#ifdef  MULTICOMPONENTGLASSFILE
-  if(header.npart[0])
-    {
-      dummy = sizeof(float) * header.npart[0];
-      my_fwrite(&dummy, sizeof(dummy), 1, fd);
-
-      for(i = 0, pc = 0; i < header.npart[0]; i++)
-	{
-	  block[pc] = 0;
-
-	  pc++;
-
-	  if(pc == blockmaxlen)
-	    {
-	      my_fwrite(block, sizeof(float), pc, fd);
-	      pc = 0;
-	    }
-	}
-      if(pc > 0)
-	my_fwrite(block, sizeof(float), pc, fd);
-      my_fwrite(&dummy, sizeof(dummy), 1, fd);
-    }
-#endif
-
-
 
   free(block);
 
   fclose(fd);
 }
 
-
 /* This catches I/O errors occuring for my_fwrite(). In this case we better stop.
  */
-size_t my_fwrite(void *ptr, size_t size, size_t nmemb, FILE * stream)
+size_t my_fwrite(void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
   size_t nwritten;
 
-  if((nwritten = fwrite(ptr, size, nmemb, stream)) != nmemb)
-    {
-      printf("I/O error (fwrite) on task=%d has occured.\n", ThisTask);
-      fflush(stdout);
-      FatalError(777);
-    }
+  if ((nwritten = fwrite(ptr, size, nmemb, stream)) != nmemb)
+  {
+    printf("I/O error (fwrite) on task=%d has occured.\n", ThisTask);
+    fflush(stdout);
+    FatalError(777);
+  }
   return nwritten;
 }
 
-
 /* This catches I/O errors occuring for fread(). In this case we better stop.
  */
-size_t my_fread(void *ptr, size_t size, size_t nmemb, FILE * stream)
+size_t my_fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
   size_t nread;
 
-  if((nread = fread(ptr, size, nmemb, stream)) != nmemb)
-    {
-      printf("I/O error (fread) on task=%d has occured.\n", ThisTask);
-      fflush(stdout);
-      FatalError(778);
-    }
+  if ((nread = fread(ptr, size, nmemb, stream)) != nmemb)
+  {
+    printf("I/O error (fread) on task=%d has occured.\n", ThisTask);
+    fflush(stdout);
+    FatalError(778);
+  }
   return nread;
 }
-
 
 #ifdef MULTICOMPONENTGLASSFILE
 int compare_type(const void *a, const void *b)
 {
-  if(((struct part_data *) a)->Type < (((struct part_data *) b)->Type))
+  if (((struct part_data *)a)->Type < (((struct part_data *)b)->Type))
     return -1;
 
-  if(((struct part_data *) a)->Type > (((struct part_data *) b)->Type))
+  if (((struct part_data *)a)->Type > (((struct part_data *)b)->Type))
     return +1;
 
   return 0;
